@@ -26,12 +26,12 @@ coverage, and fail on every broken copy in ``grader/mutants/``.
 
 import pytest
 
+from src.types import Coordinate
 from src.waypoint_utils import (
     east_north_coordinate_offset_m,
     parse_waypoints_file,
     sort_clockwise_sweep,
 )
-from src.types import Coordinate
 
 # The helper and the test below are given to you.
 
@@ -157,13 +157,15 @@ def test_coordinate_is_frozen(tmp_path):
     path = write_to_tmp_waypoints_file(tmp_path, "waypoints:\n  - {lat: 1, lon: 2, alt: 3}")
     _, waypoints = parse_waypoints_file(path)
     wp = waypoints[0]
-    with pytest.raises(Exception):  
+    with pytest.raises(AttributeError):  
         wp.lat = 42.0
 
 
 def test_east_north_coordinate_offset_m():
-    from src.constants import EARTH_RADIUS_M
     import math
+    
+    from src.constants import EARTH_RADIUS_M
+    
 
     deg_len = math.radians(1.0) * EARTH_RADIUS_M
 
