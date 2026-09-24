@@ -88,9 +88,154 @@ def test_parse_waypoints_file_success(tmp_path, text, expected):
     assert parse_waypoints_file(path) == expected
 
 
-def test_placeholder():
-    # TODO(bootcamper): delete this and write real tests. It's only here so
-    # linter doesn't complain about unused imports before you start.
-    assert callable(east_north_coordinate_offset_m)
-    assert callable(parse_waypoints_file)
-    assert callable(sort_clockwise_sweep)
+def test_parse_waypoints_file_not_found(tmp_path):
+    with pytest.raises(OSError):
+        parse_waypoints_file(tmp_path / "ghost.yaml")
+
+def test_parse_waypoints_file_empty_file(tmp_path):
+    path = write_to_tmp_waypoints_file(tmp_path, "")
+    home, waypoints = parse_waypoints_file(path)
+    assert home is None
+    assert waypoints == []
+
+def test_parse_waypoints_file_empty_waypoints(tmp_path):
+    path = write_to_tmp_waypoints_file(tmp_path, "waypoints: []")
+    home, waypoints = parse_waypoints_file(path)
+    assert home is None
+    assert waypoints == []
+
+@pytest.mark.parametrize(
+    ("bad_yaml", "error_match"),
+    [
+        ("[ { {", "invalid YAML"),
+        ("[]", "expected a mapping with 'home' and 'waypoints'"),
+        ("home: 5", "home must be a mapping"),
+        ("waypoints: 5", "'waypoints' must be a list"),
+        ("waypoints:\n  - {lat: 1, lon: 2}", "waypoint 1 is missing key"),
+        ("home: {lat: 1, lon: 2}\nwaypoints: []", "home is missing key"),
+        ("waypoints:\n  - {lat: 'a', lon: 2, alt: 3}", "waypoint 1 has a non-numeric value"),
+        ("waypoints:\n  - [1, 2, 3]", "must be a mapping"),
+    ],
+    ids=[
+        "invalid_yaml",
+        "top_level_not_dict",
+        "home_not_dict",
+        "waypoints_not_list",
+        "missing_key_alt",
+        "home_missing_key",
+        "non_numeric_value",
+        "waypoint_not_dict"
+    ]
+)
+def test_parse_waypoints_file_errors(tmp_path, bad_yaml, error_match):
+    path = write_to_tmp_waypoints_file(tmp_path, bad_yaml)
+    with pytest.raises(ValueError, match=error_match):
+        parse_waypoints_file(path)
+
+
+
+def test_parse_waypoints_file_valid_boundaries(tmp_path):
+    text = "waypoints:\n  - {lat: 90.0, lon: 180.0, alt: 0}\n  - {lat: -90.0, lon: -180.0, alt: 0}"
+    path = write_to_tmp_waypoints_file(tmp_path, text)
+    _, waypoints = parse_waypoints_file(path)
+    assert len(waypoints) == 2
+
+@pytest.mark.parametrize("bad_bounds", [
+    "waypoints:\n  - {lat: 90.1, lon: 0, alt: 0}",
+    "waypoints:\n  - {lat: -90.1, lon: 0, alt: 0}",
+    "waypoints:\n  - {lat: 0, lon: 180.1, alt: 0}",
+    "waypoints:\n  - {lat: 0, lon: -180.1, alt: 0}"
+])
+def test_parse_waypoints_file_invalid_boundaries(tmp_path, bad_bounds):
+    path = write_to_tmp_waypoints_file(tmp_path, bad_bounds)
+    with pytest.raises(ValueError, match="out of range"):
+        parse_waypoints_file(path)
+
+
+
+def test_coordinate_is_frozen(tmp_path):
+    path = write_to_tmp_waypoints_file(tmp_path, "waypoints:\n  - {lat: 1, lon: 2, alt: 3}")
+    _, waypoints = parse_waypoints_file(path)
+    wp = waypoints[0]
+    with pytest.raises(Exception):  
+        wp.lat = 42.0
+
+
+def test_east_north_coordinate_offset_m():
+    from src.constants import EARTH_RADIUS_M
+    import math
+
+    deg_len = math.radians(1.0) * EARTH_RADIUS_M
+
+    east, north = east_north_coordinate_offset_m(0.0, 0.0, 1.0, 0.0)
+    assert east == pytest.approx(0.0, abs=1e-5)
+    assert north == pytest.approx(deg_len, abs=1e-1)
+
+    east, north = east_north_coordinate_offset_m(1.0, 0.0, 0.0, 0.0)
+    assert east == pytest.approx(0.0, abs=1e-5)
+    assert north == pytest.approx(-deg_len, abs=1e-1)
+
+    east, north = east_north_coordinate_offset_m(0.0, 0.0, 0.0, 1.0)
+    assert east == pytest.approx(deg_len, abs=1e-1)
+    assert north == pytest.approx(0.0, abs=1e-5)
+
+    east, north = east_north_coordinate_offset_m(0.0, 1.0, 0.0, 0.0)
+    assert east == pytest.approx(-deg_len, abs=1e-1)
+    assert north == pytest.approx(0.0, abs=1e-5)
+
+    east, north = east_north_coordinate_offset_m(60.0, 0.0, 60.0, 1.0)
+    assert east == pytest.approx(deg_len * 0.5, abs=1e-1)
+    assert north == pytest.approx(0.0, abs=1e-5)
+
+
+def test_sort_clockwise_sweep_short_lists():
+    assert sort_clockwise_sweep([]) == []
+    wp = [Coordinate(1, 1, 1)]
+    assert sort_clockwise_sweep(wp) == wp
+    assert sort_clockwise_sweep(wp) is not wp  
+
+def test_sort_clockwise_sweep_no_home():
+    north = Coordinate(1.0, 0.0, 0.0)
+    east = Coordinate(0.0, 1.0, 0.0)
+    south = Coordinate(-1.0, 0.0, 0.0)
+    west = Coordinate(0.0, -1.0, 0.0)
+
+    waypoints = [south, north, west, east]
+    
+    sorted_wp = sort_clockwise_sweep(waypoints)
+    assert sorted_wp == [north, east, south, west]
+
+def test_sort_clockwise_sweep_with_home():
+    north = Coordinate(1.0, 0.0, 0.0)
+    east = Coordinate(0.0, 1.0, 0.0)
+    south = Coordinate(-1.0, 0.0, 0.0)
+    west = Coordinate(0.0, -1.0, 0.0)
+
+    waypoints = [north, south, east, west]
+    
+    home = Coordinate(0.0, 2.0, 0.0)
+    sorted_wp = sort_clockwise_sweep(waypoints, home=home)
+    assert sorted_wp == [east, south, west, north]
+
+def test_sort_clockwise_sweep_home_at_centroid():
+    north = Coordinate(1.0, 0.0, 0.0)
+    east = Coordinate(0.0, 1.0, 0.0)
+    south = Coordinate(-1.0, 0.0, 0.0)
+    west = Coordinate(0.0, -1.0, 0.0)
+
+    waypoints = [north, south, east, west]
+    
+    home = Coordinate(0.0, 0.0, 0.0)
+    sorted_wp = sort_clockwise_sweep(waypoints, home=home)
+    assert sorted_wp == [north, east, south, west]
+
+def test_sort_clockwise_sweep_same_direction_sorts_by_distance():
+    n1 = Coordinate(1.0, 0.0, 0.0)  
+    n2 = Coordinate(2.0, 0.0, 0.0)   
+    s_east = Coordinate(-1.5, 1.0, 0.0)
+    s_west = Coordinate(-1.5, -1.0, 0.0)
+
+    waypoints = [s_east, n2, n1, s_west]
+    sorted_wp = sort_clockwise_sweep(waypoints)
+    
+    assert sorted_wp == [n1, n2, s_east, s_west]
