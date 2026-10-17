@@ -56,13 +56,11 @@ def create_perception_sweep(
     Returns:
         The behavior at the top of the sweep.
     """
-    # Create a Sequence that Remembers its progress.
     sweep_sequence = py_trees.composites.Sequence(
         name="PerceptionSweep", 
         memory=True
     )
     
-    # Generate the behaviors and add them in alternating order
     for i in range(waypoint_count):
         sweep_sequence.add_child(fly_factory(i))
         sweep_sequence.add_child(capture_factory(i))

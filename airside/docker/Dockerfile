@@ -11,14 +11,15 @@ FROM ros:humble-ros-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|packages.ros.org/ros2/ubuntu|packages.ros.org/ros2-testing/ubuntu|g' /etc/apt/sources.list.d/* \
+    && apt-get update && apt-get install -y --no-install-recommends \
     geographiclib-tools \
     python3-pip \
     ros-humble-mavros \
     ros-humble-mavros-extras \
     ros-humble-py-trees \
     ros-humble-py-trees-ros \
-  && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
 # MAVROS needs the GeographicLib datasets for global-frame conversions.
 RUN /opt/ros/humble/lib/mavros/install_geographiclib_datasets.sh

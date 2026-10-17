@@ -29,7 +29,6 @@ def generate_launch_description() -> LaunchDescription:
             Node(
                 package="mavros",
                 executable="mavros_node",
-                namespace="mavros",
                 output="both",
                 respawn=True,
                 respawn_delay=2.0,
